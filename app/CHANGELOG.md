@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.2 — Build Fix: package-lock.json
+
+### 🐛 Bug Fixes
+
+- **`package-lock.json` was missing from the repository** — the file was listed in `.gitignore`, so Supervisor's Docker build context never contained it. This caused a hard build failure: `ERROR: failed to calculate checksum … "/package-lock.json": not found`. Fixed by removing `package-lock.json` from `.gitignore` and committing it so `npm ci` (which requires a lockfile) can run correctly during the image build.
+
+---
+
 ## v1.2.1 — Build Cache Bust
 
 ### 🔧 Internal
