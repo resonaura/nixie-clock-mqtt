@@ -83,7 +83,59 @@ client.on("connect", () => {
   void poll();
 });
 
-// ── State publisher ───────────────────────────────────────────────────────────
+// ── Optimistic light state publisher ─────────────────────────────────────────
+
+/**
+ * Publish light state immediately from known h/s/v without waiting for a
+ * /config poll. Called right after computing new values in handleLightTube so
+ * HA reflects the change instantly before the device even responds.
+ */
+function publishLightOptimistic(
+  tube: number | "all",
+  h: number,
+  s: number,
+  v: number,
+  effectName?: string,
+): void {
+  const state = v > 0 ? "ON" : "OFF";
+  const brightness = vToHaBright(v);
+
+  const makePayload = (ph: number, ps: number) =>
+    JSON.stringify({
+      state,
+      color_mode: "hs",
+      color: { h: ph, s: ps },
+      brightness,
+      ...(effectName !== undefined ? { effect: effectName } : {}),
+    });
+
+  if (tube === "all") {
+    for (let i = 1; i <= 6; i++) {
+      publish(
+        `homeassistant/light/${MQTT_DEVICE.id}/tube_${i}/state`,
+        makePayload(h, s),
+      );
+    }
+    publish(
+      `homeassistant/light/${MQTT_DEVICE.id}/all_tubes/state`,
+      makePayload(h, s),
+    );
+  } else {
+    publish(
+      `homeassistant/light/${MQTT_DEVICE.id}/tube_${tube}/state`,
+      makePayload(h, s),
+    );
+    // tube 1 is the representative colour for all_tubes
+    if (tube === 1) {
+      publish(
+        `homeassistant/light/${MQTT_DEVICE.id}/all_tubes/state`,
+        makePayload(h, s),
+      );
+    }
+  }
+}
+
+// ── Full state publisher (from device config) ─────────────────────────────────
 
 function publishState(cfg: NixieConfig): void {
   const globalV = configLightToV(cfg.light);
@@ -143,8 +195,6 @@ function publishState(cfg: NixieConfig): void {
     String(cfg.alarmm),
   );
 
-  // Timer — not stored in /config (stateless on device), skip
-
   log.debug("State published");
 }
 
@@ -190,16 +240,18 @@ async function handleLightTube(
   const msg = JSON.parse(payload) as LightCommand;
   const cfg = lastConfig;
 
-  // If an effect was requested on all_tubes, map it to a color mode
+  // Effect command on all_tubes → color mode change
   if (tube === "all" && msg.effect !== undefined) {
     const m = COLOR_MODE_IDS[msg.effect];
     if (m === undefined) {
       log.warn(`Unknown effect/color mode: ${msg.effect}`);
       return;
     }
+    // Optimistically reflect new effect in HA immediately
+    const { h, s } = cfg ? tubeHSV(cfg, 1) : { h: 0, s: 100 };
+    publishLightOptimistic("all", h, s, lastNonZeroV, msg.effect);
     // Preserve current display style (outcarry), default Normal
-    const s = cfg?.outcarry ?? 1;
-    await setColorMode(m, s);
+    await setColorMode(m, cfg?.outcarry ?? 1);
     return;
   }
 
@@ -216,10 +268,12 @@ async function handleLightTube(
   }
 
   if (msg.state === "OFF") {
+    // Optimistically turn off in HA immediately
+    publishLightOptimistic(tube, h, s, 0);
     if (tube === "all") {
       await setAllTubesColor(h, s, 0);
     } else {
-      await setTubeColor(tube, h, s, 0);
+      await setTubeColor(tube as number, h, s, 0);
     }
     return;
   }
@@ -234,10 +288,20 @@ async function handleLightTube(
     if (v > 0) lastNonZeroV = v;
   }
 
+  // Optimistically publish new color/brightness to HA before device responds
+  const effectName = cfg ? (COLOR_MODE_NAMES[cfg.mode] ?? "Custom") : undefined;
+  publishLightOptimistic(
+    tube,
+    h,
+    s,
+    v,
+    tube === "all" ? effectName : undefined,
+  );
+
   if (tube === "all") {
     await setAllTubesColor(h, s, v);
   } else {
-    await setTubeColor(tube, h, s, v);
+    await setTubeColor(tube as number, h, s, v);
   }
 }
 
@@ -315,7 +379,7 @@ client.on("message", async (topic, msg) => {
       return;
     }
 
-    // Force-publish state on next poll so HA reflects the change immediately
+    // Force-publish state on next poll so HA reflects any device-side changes
     forcePollPublish = true;
     void poll();
   } catch (err) {

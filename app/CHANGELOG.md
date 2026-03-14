@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.3.5 — Optimistic Light State Updates
+
+### ✨ Improvements
+
+- **HA reflects color/brightness/on-off changes instantly** — previously HA would wait for the next `/config` poll to update the light entity state. Now `handleLightTube` publishes the new state to MQTT *before* sending the HTTP request to the device, so the HA UI updates immediately with no visible lag.
+- Applies to: single tube color, all-tubes color, brightness, ON/OFF, and color mode effect changes.
+
+---
+
 ## v1.3.4 — Revert to Sequential Tube Color Updates
 
 ### 🔧 Internal

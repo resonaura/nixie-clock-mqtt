@@ -52,12 +52,23 @@ export async function setTubeColor(
 }
 
 /** Set all 6 tubes to the same colour in sequence. */
+// Incremented each time setAllTubesColor is called. Each invocation captures
+// its own generation; if a newer call arrives mid-loop the old one bails out.
+let allTubesGeneration = 0;
+
 export async function setAllTubesColor(
   h: number,
   s: number,
   v: number,
 ): Promise<void> {
+  const gen = ++allTubesGeneration;
   for (let i = 1; i <= 6; i++) {
+    if (gen !== allTubesGeneration) {
+      log.debug(
+        `setAllTubesColor gen=${gen} superseded at tube ${i}, aborting`,
+      );
+      return;
+    }
     await setTubeColor(i, h, s, v);
   }
 }
