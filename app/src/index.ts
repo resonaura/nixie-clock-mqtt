@@ -8,10 +8,8 @@ import {
   setTubeColor,
   setAllTubesColor,
   setColorMode,
-  setDisplayStyle,
   setAlarm,
   setTimer,
-  setDST,
   setTimezone,
   setTimeFormat,
   syncTime,
@@ -23,7 +21,7 @@ import {
   MQTTDevice,
   NixieConfig,
   COLOR_MODE_IDS,
-  DISPLAY_STYLE_IDS,
+  COLOR_MODE_NAMES,
   tzByLabel,
 } from "./types.js";
 import {
@@ -33,8 +31,6 @@ import {
   vToHaBright,
   configLightToV,
   tzLabel,
-  tzOffsetFromLabel,
-  normalizeValue,
 } from "./utils.js";
 
 // ── MQTT device descriptor ────────────────────────────────────────────────────
@@ -86,6 +82,9 @@ client.on("connect", () => {
 function publishState(cfg: NixieConfig): void {
   const globalV = configLightToV(cfg.light);
 
+  // Current color mode name (for effect state on all_tubes)
+  const effectName = COLOR_MODE_NAMES[cfg.mode] ?? "Custom";
+
   // Per-tube lights
   for (let i = 1; i <= 6; i++) {
     const { h, s } = tubeHSV(cfg, i);
@@ -100,7 +99,7 @@ function publishState(cfg: NixieConfig): void {
     );
   }
 
-  // All-tubes master — representative colour from tube 1
+  // All-tubes master — representative colour from tube 1 + current effect
   {
     const { h, s } = tubeHSV(cfg, 1);
     publish(
@@ -110,36 +109,21 @@ function publishState(cfg: NixieConfig): void {
         color_mode: "hs",
         color: { h, s },
         brightness: vToHaBright(globalV),
+        effect: effectName,
       }),
     );
   }
 
-  // Color mode select
-  publish(
-    `homeassistant/select/${MQTT_DEVICE.id}/color_mode/state`,
-    String(normalizeValue("select", "color_mode", cfg.mode)),
-  );
-
-  // Display style select
-  publish(
-    `homeassistant/select/${MQTT_DEVICE.id}/display_style/state`,
-    String(normalizeValue("select", "display_style", cfg.outcarry)),
-  );
-
-  // Timezone select — full label string
+  // Timezone select
   publish(
     `homeassistant/select/${MQTT_DEVICE.id}/timezone/state`,
     tzLabel(cfg.tz),
   );
 
-  // Switches
+  // 24h format switch
   publish(
     `homeassistant/switch/${MQTT_DEVICE.id}/time_format/state`,
     cfg.is24h ? "ON" : "OFF",
-  );
-  publish(
-    `homeassistant/switch/${MQTT_DEVICE.id}/dst/state`,
-    cfg.dst ? "ON" : "OFF",
   );
 
   // Alarm numbers
@@ -194,6 +178,19 @@ async function handleLightTube(
   const msg = JSON.parse(payload) as LightCommand;
   const cfg = lastConfig;
 
+  // If an effect was requested on all_tubes, map it to a color mode
+  if (tube === "all" && msg.effect !== undefined) {
+    const m = COLOR_MODE_IDS[msg.effect];
+    if (m === undefined) {
+      log.warn(`Unknown effect/color mode: ${msg.effect}`);
+      return;
+    }
+    // Preserve current display style (outcarry), default Normal
+    const s = cfg?.outcarry ?? 1;
+    await setColorMode(m, s);
+    return;
+  }
+
   // Base HSV from current state
   let h = 0,
     s = 100,
@@ -220,43 +217,17 @@ async function handleLightTube(
   }
 
   if (msg.brightness !== undefined) {
-    // brightness is global — same v sent to all tubes regardless of target
     v = haBrightToV(msg.brightness);
   }
 
   if (tube === "all") {
     await setAllTubesColor(h, s, v);
   } else {
-    // When setting a single tube's colour we preserve global brightness
-    // but update brightness if explicitly provided
     await setTubeColor(tube, h, s, v);
   }
 }
 
-async function handleColorMode(payload: string): Promise<void> {
-  const m = COLOR_MODE_IDS[payload];
-  if (m === undefined) {
-    log.warn(`Unknown color mode: ${payload}`);
-    return;
-  }
-  // Preserve current display style
-  const s = lastConfig?.outcarry ?? 1;
-  await setColorMode(m, s);
-}
-
-async function handleDisplayStyle(payload: string): Promise<void> {
-  const s = DISPLAY_STYLE_IDS[payload];
-  if (s === undefined) {
-    log.warn(`Unknown display style: ${payload}`);
-    return;
-  }
-  // Always send m=1 (Custom) — display style only has effect in Custom mode
-  const m = lastConfig?.mode ?? 1;
-  await setDisplayStyle(s, m);
-}
-
 async function handleTimezone(payload: string): Promise<void> {
-  // payload is a full label string e.g. "UTC-08:00 — Pacific Time (Seattle, Vancouver)"
   const entry = tzByLabel(payload);
   if (!entry) {
     log.warn(`Unknown timezone label: ${payload}`);
@@ -267,10 +238,6 @@ async function handleTimezone(payload: string): Promise<void> {
     `Timezone set to ${entry.label} (offset: ${entry.offset >= 0 ? "+" : ""}${entry.offset}h) — restarting time sync`,
   );
   startTimeSync(entry.offset);
-}
-
-async function handleDST(payload: string): Promise<void> {
-  await setDST(payload === "ON");
 }
 
 async function handleTimeFormat(payload: string): Promise<void> {
@@ -317,14 +284,8 @@ client.on("message", async (topic, msg) => {
       await handleLightTube("all", payload);
     } else if (/^tube_[1-6]$/.test(attr)) {
       await handleLightTube(parseInt(attr.split("_")[1]!), payload);
-    } else if (attr === "color_mode") {
-      await handleColorMode(payload);
-    } else if (attr === "display_style") {
-      await handleDisplayStyle(payload);
     } else if (attr === "timezone") {
       await handleTimezone(payload);
-    } else if (attr === "dst") {
-      await handleDST(payload);
     } else if (attr === "time_format") {
       await handleTimeFormat(payload);
     } else if (attr === "alarm_hour") {

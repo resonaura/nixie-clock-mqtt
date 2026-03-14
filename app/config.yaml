@@ -1,6 +1,6 @@
 name: "Clocteck RGB Tube Clock"
 description: "MQTT bridge for the Clocteck RGB Tube Clock — per-tube colour, color modes (Custom/Rainbow/Breathing/Flowing), display style, alarm, timer, DST, timezone dropdown, and continuous 1-second time sync."
-version: "1.2.2"
+version: "1.3.0"
 slug: "nixie_clock_mqtt"
 changelog: "CHANGELOG.md"
 init: false

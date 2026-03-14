@@ -60,13 +60,20 @@ export function publishLightDiscovery(
   device: MQTTDevice,
   entity: EntityConfig,
 ): void {
-  publishDiscoveryEntity(client, device, entity, {
+  const overrides: Record<string, unknown> = {
     schema: "json",
     brightness: true,
     color_mode: true,
     supported_color_modes: ["hs"],
     brightness_scale: 255,
-  });
+  };
+
+  if (entity.effects && entity.effects.length > 0) {
+    overrides.effect = true;
+    overrides.effect_list = entity.effects;
+  }
+
+  publishDiscoveryEntity(client, device, entity, overrides);
 }
 
 export function publishSelectDiscovery(

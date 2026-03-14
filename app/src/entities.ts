@@ -1,9 +1,5 @@
 import { EntityConfig } from "./types.js";
-import {
-  COLOR_MODE_OPTIONS,
-  DISPLAY_STYLE_OPTIONS,
-  TIMEZONE_LABELS,
-} from "./types.js";
+import { COLOR_MODE_OPTIONS, TIMEZONE_LABELS } from "./types.js";
 
 export const ENTITIES: EntityConfig[] = [
   // ── Per-tube lights ──────────────────────────────────────────────────────
@@ -13,6 +9,7 @@ export const ENTITIES: EntityConfig[] = [
     attr: "all_tubes",
     icon: "mdi:clock-digital",
     command: true,
+    effects: COLOR_MODE_OPTIONS,
   },
   {
     domain: "light",
@@ -57,34 +54,8 @@ export const ENTITIES: EntityConfig[] = [
     command: true,
   },
 
-  // ── Display Style (Normal / Carry / Jumping — s= param alongside m=1) ───
-  // Only applies when Color Mode is Custom. In HA this is a separate select
-  // so you can combine e.g. Custom + Jumping.
-  {
-    domain: "select",
-    name: "Display Style",
-    attr: "display_style",
-    icon: "mdi:television-play",
-    command: true,
-    options: DISPLAY_STYLE_OPTIONS,
-  },
-
-  // ── Color Mode (m= param: Custom/Rainbow/Breathing/Flowing/Test) ────────
-  // When set to anything other than Custom the per-tube lights become
-  // decorative (the effect overrides individual colours).
-  {
-    domain: "select",
-    name: "Color Mode",
-    attr: "color_mode",
-    icon: "mdi:palette",
-    command: true,
-    options: COLOR_MODE_OPTIONS,
-  },
-
   // ── Time ─────────────────────────────────────────────────────────────────
 
-  // Full timezone dropdown with UTC offset labels — 25 entries matching the
-  // firmware web UI exactly (UTC-12 … UTC+12, including UTC+5:30 for India).
   {
     domain: "select",
     name: "Timezone",
@@ -98,13 +69,6 @@ export const ENTITIES: EntityConfig[] = [
     name: "24h Time Format",
     attr: "time_format",
     icon: "mdi:clock-time-four-outline",
-    command: true,
-  },
-  {
-    domain: "switch",
-    name: "Daylight Saving Time",
-    attr: "dst",
-    icon: "mdi:sun-clock",
     command: true,
   },
   {

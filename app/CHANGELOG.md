@@ -1,5 +1,30 @@
 # Changelog
 
+## v1.3.0 — Time Fix, UI Cleanup
+
+### 🐛 Bug Fixes
+
+- **Clock showed wrong time (off by several hours)** — `syncTimeWithOffset` was applying the timezone offset before sending to `/uptm`, but the firmware applies its own stored `tz` offset on top. This caused double-shifting. Fixed: now pure UTC is sent and the firmware handles local time conversion itself.
+- **`mo` (month) was 0-based** — JS `Date.getUTCMonth()` returns 0–11, but the firmware expects 1–12. Fixed by sending `mo: now.getUTCMonth() + 1`.
+
+### ✨ Improvements
+
+- **Color Mode is now an Effect on the "All Tubes" light** — instead of a separate `select` entity, color mode (Custom / Rainbow / Breathing / Flowing / Test) is exposed as an HA light effect list on the `All Tubes` light entity. This is the natural HA UX for light effects.
+- **Removed "Daylight Saving Time" switch** — caused confusion and conflicted with the firmware's own DST handling. DST should be set directly on the device if needed.
+- **Removed "Display Style" select** — was bugging out and conflicting with time sync and other features. The firmware keeps its last display style internally.
+
+### 🔧 Breaking Changes
+
+| Removed entity | Was |
+|---|---|
+| `switch.nixie_dst` | Daylight Saving Time toggle |
+| `select.nixie_display_style` | Display Style (Normal/Carry/Jumping) |
+| `select.nixie_color_mode` | Color Mode select |
+
+Color Mode is now available as `effect` on `light.nixie_all_tubes`.
+
+---
+
 ## v1.2.2 — Build Fix: package-lock.json
 
 ### 🐛 Bug Fixes

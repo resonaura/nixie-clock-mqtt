@@ -162,6 +162,8 @@ export interface EntityConfig {
   entityCategory?: "diagnostic" | "config";
   /** For select entities */
   options?: string[];
+  /** For light entities — effect list (maps to color mode) */
+  effects?: string[];
   /** For number entities */
   min?: number;
   max?: number;
@@ -181,6 +183,7 @@ export interface LightCommand {
   state?: "ON" | "OFF";
   brightness?: number;
   color?: { h: number; s: number };
+  effect?: string;
 }
 
 // ── MQTT device descriptor ────────────────────────────────────────────────────
