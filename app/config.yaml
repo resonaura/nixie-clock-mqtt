@@ -1,0 +1,39 @@
+name: "Clocteck RGB Tube Clock"
+description: "MQTT bridge for the Clocteck RGB Tube Clock — exposes all controls (per-tube colour, display mode, alarm, timer, DST, timezone, time sync) to Home Assistant via MQTT auto-discovery."
+version: "1.0.0"
+slug: "nixie_clock_mqtt"
+init: false
+startup: services
+boot: auto
+services:
+  - mqtt:need
+arch:
+  - aarch64
+  - amd64
+  - armhf
+  - armv7
+  - i386
+homeassistant_api: false
+auth_api: false
+ingress: false
+hassio_api: false
+apparmor: true
+host_network: false
+map:
+  - config:rw
+
+options:
+  nixie_host: "192.168.5.108"
+  poll_interval: 10
+  mqtt_url: ""
+  mqtt_user: ""
+  mqtt_pass: ""
+  log_level: "info"
+
+schema:
+  nixie_host: str
+  poll_interval: int(1,60)
+  mqtt_url: str?
+  mqtt_user: str?
+  mqtt_pass: str?
+  log_level: list(debug|info|warn|error)
