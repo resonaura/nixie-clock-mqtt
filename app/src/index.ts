@@ -7,7 +7,8 @@ import {
   getConfig,
   setTubeColor,
   setAllTubesColor,
-  setMode,
+  setColorMode,
+  setDisplayStyle,
   setAlarm,
   setTimer,
   setDST,
@@ -15,13 +16,23 @@ import {
   syncTime,
   getFirmwareVersion,
 } from "./nixie.js";
-import { LightCommand, MQTTDevice, NixieConfig } from "./types.js";
+import { startTimeSync } from "./timesync.js";
+import {
+  LightCommand,
+  MQTTDevice,
+  NixieConfig,
+  COLOR_MODE_IDS,
+  DISPLAY_STYLE_IDS,
+  tzByLabel,
+} from "./types.js";
 import {
   log,
   tubeHSV,
   haBrightToV,
   vToHaBright,
-  rgbToHsv,
+  configLightToV,
+  tzLabel,
+  tzOffsetFromLabel,
   normalizeValue,
 } from "./utils.js";
 
@@ -44,6 +55,12 @@ let lastConfig: NixieConfig | null = null;
 
 const client = createMqttClient();
 
+// ── Publish helper ────────────────────────────────────────────────────────────
+
+function publish(topic: string, payload: string, retain = false): void {
+  client.publish(topic, payload, { retain, qos: 1 });
+}
+
 // ── Discovery ─────────────────────────────────────────────────────────────────
 
 client.on("connect", () => {
@@ -55,57 +72,63 @@ client.on("connect", () => {
     `Published ${ENTITIES.length} discovery entries for ${MQTT_DEVICE.name}`,
   );
 
-  // Subscribe to all set topics  nixie_clock/+/set
   client.subscribe("nixie_clock/+/set", (err) => {
     if (err) log.error("Subscribe failed:", err.message);
     else log.info("Subscribed to nixie_clock/+/set");
   });
 
-  // Initial poll immediately after connect
   void poll();
 });
 
 // ── State publisher ───────────────────────────────────────────────────────────
 
 function publishState(cfg: NixieConfig): void {
+  const globalV = configLightToV(cfg.light);
+
   // Per-tube lights
   for (let i = 1; i <= 6; i++) {
-    const { h, s, v } = tubeHSV(cfg, i);
+    const { h, s } = tubeHSV(cfg, i);
     publish(
       `homeassistant/light/${MQTT_DEVICE.id}/tube_${i}/state`,
       JSON.stringify({
-        state: v > 0 ? "ON" : "OFF",
+        state: globalV > 0 ? "ON" : "OFF",
         color_mode: "hs",
         color: { h, s },
-        brightness: vToHaBright(v),
+        brightness: vToHaBright(globalV),
       }),
     );
   }
 
-  // All-tubes master — uses tube 1 as representative
+  // All-tubes master — representative colour from tube 1
   {
-    const { h, s, v } = tubeHSV(cfg, 1);
+    const { h, s } = tubeHSV(cfg, 1);
     publish(
       `homeassistant/light/${MQTT_DEVICE.id}/all_tubes/state`,
       JSON.stringify({
-        state: v > 0 ? "ON" : "OFF",
+        state: globalV > 0 ? "ON" : "OFF",
         color_mode: "hs",
         color: { h, s },
-        brightness: vToHaBright(v),
+        brightness: vToHaBright(globalV),
       }),
     );
   }
 
-  // Mode
+  // Color mode select
   publish(
-    `homeassistant/select/${MQTT_DEVICE.id}/mode/state`,
-    String(normalizeValue("select", "mode", cfg.mode)),
+    `homeassistant/select/${MQTT_DEVICE.id}/color_mode/state`,
+    String(normalizeValue("select", "color_mode", cfg.mode)),
   );
 
-  // Speed (outcarry)
+  // Display style select
   publish(
-    `homeassistant/select/${MQTT_DEVICE.id}/speed/state`,
-    String(normalizeValue("select", "speed", cfg.outcarry)),
+    `homeassistant/select/${MQTT_DEVICE.id}/display_style/state`,
+    String(normalizeValue("select", "display_style", cfg.outcarry)),
+  );
+
+  // Timezone select — full label string
+  publish(
+    `homeassistant/select/${MQTT_DEVICE.id}/timezone/state`,
+    tzLabel(cfg.tz),
   );
 
   // Switches
@@ -118,7 +141,7 @@ function publishState(cfg: NixieConfig): void {
     cfg.dst ? "ON" : "OFF",
   );
 
-  // Numbers
+  // Alarm numbers
   publish(
     `homeassistant/number/${MQTT_DEVICE.id}/alarm_hour/state`,
     String(cfg.alarmh),
@@ -127,10 +150,8 @@ function publishState(cfg: NixieConfig): void {
     `homeassistant/number/${MQTT_DEVICE.id}/alarm_minute/state`,
     String(cfg.alarmm),
   );
-  publish(
-    `homeassistant/number/${MQTT_DEVICE.id}/timezone/state`,
-    String(cfg.tz),
-  );
+
+  // Timer — not stored in /config (stateless on device), skip
 
   log.debug("State published");
 }
@@ -141,12 +162,19 @@ async function poll(): Promise<void> {
   try {
     const cfg = await getConfig();
 
-    // Publish availability
     publish(AVAILABILITY_TOPIC, "online", true);
 
-    // Only push state if something changed
     if (JSON.stringify(cfg) !== JSON.stringify(lastConfig)) {
       log.info("Config changed — publishing state");
+
+      // (Re)start timesync when tz changes or on first fetch
+      if (lastConfig === null || lastConfig.tz !== cfg.tz) {
+        log.info(
+          `Timezone: ${tzLabel(cfg.tz)} (${cfg.tz >= 0 ? "+" : ""}${cfg.tz}h) — starting time sync`,
+        );
+        startTimeSync(cfg.tz);
+      }
+
       lastConfig = cfg;
       publishState(cfg);
     }
@@ -165,7 +193,7 @@ async function handleLightTube(
   const msg = JSON.parse(payload) as LightCommand;
   const cfg = lastConfig;
 
-  // Resolve base HSV from current state
+  // Base HSV from current state
   let h = 0,
     s = 100,
     v = 100;
@@ -177,9 +205,11 @@ async function handleLightTube(
   }
 
   if (msg.state === "OFF") {
-    tube === "all"
-      ? await setAllTubesColor(h, s, 0)
-      : await setTubeColor(tube, h, s, 0);
+    if (tube === "all") {
+      await setAllTubesColor(h, s, 0);
+    } else {
+      await setTubeColor(tube, h, s, 0);
+    }
     return;
   }
 
@@ -189,32 +219,53 @@ async function handleLightTube(
   }
 
   if (msg.brightness !== undefined) {
+    // brightness is global — same v sent to all tubes regardless of target
     v = haBrightToV(msg.brightness);
   }
 
-  tube === "all"
-    ? await setAllTubesColor(h, s, v)
-    : await setTubeColor(tube, h, s, v);
+  if (tube === "all") {
+    await setAllTubesColor(h, s, v);
+  } else {
+    // When setting a single tube's colour we preserve global brightness
+    // but update brightness if explicitly provided
+    await setTubeColor(tube, h, s, v);
+  }
 }
 
-async function handleMode(payload: string): Promise<void> {
-  const m = { Clock: 1, Countdown: 2, Cycle: 3 }[payload];
+async function handleColorMode(payload: string): Promise<void> {
+  const m = COLOR_MODE_IDS[payload];
   if (m === undefined) {
-    log.warn(`Unknown mode: ${payload}`);
+    log.warn(`Unknown color mode: ${payload}`);
     return;
   }
-  const s = lastConfig?.outcarry ?? 2;
-  await setMode(m, s);
+  // Preserve current display style
+  const s = lastConfig?.outcarry ?? 1;
+  await setColorMode(m, s);
 }
 
-async function handleSpeed(payload: string): Promise<void> {
-  const s = { Slow: 1, Medium: 2, Fast: 3 }[payload];
+async function handleDisplayStyle(payload: string): Promise<void> {
+  const s = DISPLAY_STYLE_IDS[payload];
   if (s === undefined) {
-    log.warn(`Unknown speed: ${payload}`);
+    log.warn(`Unknown display style: ${payload}`);
     return;
   }
-  const m = lastConfig?.mode ?? 3;
-  await setMode(m, s);
+  // Always send m=1 (Custom) — display style only has effect in Custom mode
+  const m = lastConfig?.mode ?? 1;
+  await setDisplayStyle(s, m);
+}
+
+async function handleTimezone(payload: string): Promise<void> {
+  // payload is a full label string e.g. "UTC-08:00 — Pacific Time (Seattle, Vancouver)"
+  const entry = tzByLabel(payload);
+  if (!entry) {
+    log.warn(`Unknown timezone label: ${payload}`);
+    return;
+  }
+  await setTimezone(entry.offset);
+  log.info(
+    `Timezone set to ${entry.label} (offset: ${entry.offset >= 0 ? "+" : ""}${entry.offset}h) — restarting time sync`,
+  );
+  startTimeSync(entry.offset);
 }
 
 async function handleDST(payload: string): Promise<void> {
@@ -222,8 +273,8 @@ async function handleDST(payload: string): Promise<void> {
 }
 
 async function handleTimeFormat(payload: string): Promise<void> {
-  // The clock firmware v3.101 has no confirmed standalone HTTP endpoint for
-  // toggling 12/24h from outside the web UI. Log a warning until confirmed.
+  // Firmware v3.101 has no confirmed standalone HTTP endpoint for 12/24h toggle
+  // outside of the web UI. Log a warning until the endpoint is confirmed.
   log.warn(
     `time_format (${payload}): no confirmed API endpoint in firmware v3.101`,
   );
@@ -243,18 +294,19 @@ async function handleTimer(payload: string): Promise<void> {
   await setTimer(parseInt(payload, 10));
 }
 
-async function handleTimezone(payload: string): Promise<void> {
-  await setTimezone(parseInt(payload, 10));
-}
-
 async function handleSyncTime(): Promise<void> {
-  await syncTime();
+  const tz = lastConfig?.tz ?? 0;
+  log.info(
+    `Manual sync — re-arming time sync (offset: ${tz >= 0 ? "+" : ""}${tz}h)`,
+  );
+  startTimeSync(tz);
+  await syncTime(tz);
 }
 
 // ── Message router ────────────────────────────────────────────────────────────
 
 client.on("message", async (topic, msg) => {
-  // Topic format: nixie_clock/<attr>/set
+  // Topic: nixie_clock/<attr>/set
   const parts = topic.split("/");
   const attr = parts[1];
   const payload = msg.toString();
@@ -266,10 +318,12 @@ client.on("message", async (topic, msg) => {
       await handleLightTube("all", payload);
     } else if (/^tube_[1-6]$/.test(attr)) {
       await handleLightTube(parseInt(attr.split("_")[1]!), payload);
-    } else if (attr === "mode") {
-      await handleMode(payload);
-    } else if (attr === "speed") {
-      await handleSpeed(payload);
+    } else if (attr === "color_mode") {
+      await handleColorMode(payload);
+    } else if (attr === "display_style") {
+      await handleDisplayStyle(payload);
+    } else if (attr === "timezone") {
+      await handleTimezone(payload);
     } else if (attr === "dst") {
       await handleDST(payload);
     } else if (attr === "time_format") {
@@ -280,8 +334,6 @@ client.on("message", async (topic, msg) => {
       await handleAlarm("minute", payload);
     } else if (attr === "timer") {
       await handleTimer(payload);
-    } else if (attr === "timezone") {
-      await handleTimezone(payload);
     } else if (attr === "sync_time") {
       await handleSyncTime();
     } else {
@@ -296,7 +348,7 @@ client.on("message", async (topic, msg) => {
   }
 });
 
-// ── Firmware sensor (published once on startup) ───────────────────────────────
+// ── Firmware sensor ───────────────────────────────────────────────────────────
 
 async function publishFirmware(): Promise<void> {
   try {
@@ -307,12 +359,6 @@ async function publishFirmware(): Promise<void> {
   } catch {
     log.warn("Could not fetch firmware version");
   }
-}
-
-// ── MQTT publish helpers ──────────────────────────────────────────────────────
-
-function publish(topic: string, payload: string, retain = false): void {
-  client.publish(topic, payload, { retain, qos: 1 });
 }
 
 // ── Start ─────────────────────────────────────────────────────────────────────
@@ -326,7 +372,6 @@ await publishFirmware();
 
 setInterval(() => void poll(), env.POLL_INTERVAL * 1000);
 
-// Graceful shutdown
 process.on("SIGTERM", () => {
   log.info("SIGTERM — shutting down");
   process.exit(0);

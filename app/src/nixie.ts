@@ -14,12 +14,9 @@ function createHttpClient(): AxiosInstance {
 
 let http = createHttpClient();
 
-/** Re-create the client (e.g. after host config change) */
 export function reinitClient(): void {
   http = createHttpClient();
 }
-
-// ── Low-level GET helper ──────────────────────────────────────────────────────
 
 async function get<T>(
   path: string,
@@ -38,10 +35,15 @@ export async function getConfig(): Promise<NixieConfig> {
 
 /**
  * Set colour of a single tube.
- * @param tube  1–6
- * @param h     Hue 0–360
- * @param s     Saturation 0–100
- * @param v     Value/brightness 0–100
+ *
+ * The firmware uses:
+ *   h = 0–360  (hue)
+ *   s = 0–100  (saturation percent)
+ *   v = 0–100  (brightness percent)
+ *
+ * The global brightness from /config is stored as `light` (0–254).
+ * Its equivalent v value = Math.round(light / 2.55).
+ * Per-tube s from /config is stored as 0–254; to get percent: Math.round(s / 2.55).
  */
 export async function setTubeColor(
   tube: number,
@@ -53,9 +55,7 @@ export async function setTubeColor(
   await get("/tubecolor", { t: tube, h, s, v });
 }
 
-/**
- * Set all 6 tubes to the same colour in sequence.
- */
+/** Set all 6 tubes to the same colour in sequence. */
 export async function setAllTubesColor(
   h: number,
   s: number,
@@ -67,13 +67,36 @@ export async function setAllTubesColor(
 }
 
 /**
- * Set display mode and cycle speed.
- * @param m  Mode: 1 = Clock, 2 = Countdown, 3 = Cycle
- * @param s  Speed: 1 = Slow, 2 = Medium, 3 = Fast
+ * Set color mode (the `m` parameter).
+ *
+ * m=1  Custom    — individual tube colours active, display style applies
+ * m=2  Rainbow   — rainbow gradient effect
+ * m=3  Breathing — breathing gradient effect
+ * m=4  Flowing   — flowing gradient effect
+ * m=5  Test      — test mode
+ *
+ * The `s` parameter (display style) is always sent but only has visible
+ * effect when m=1:
+ *   s=1  Normal
+ *   s=2  Carry
+ *   s=3  Jumping
  */
-export async function setMode(m: number, s: number): Promise<void> {
+export async function setColorMode(m: number, s: number): Promise<void> {
   log.debug(`mode m=${m} s=${s}`);
   await get("/mode", { m, s });
+}
+
+/**
+ * Set display style only (Normal/Carry/Jumping).
+ * Keeps the current color mode from the provided config snapshot,
+ * or defaults to m=1 (Custom) if none given.
+ */
+export async function setDisplayStyle(
+  s: number,
+  currentMode = 1,
+): Promise<void> {
+  log.debug(`display style m=${currentMode} s=${s}`);
+  await get("/mode", { m: currentMode, s });
 }
 
 /**
@@ -97,7 +120,6 @@ export async function setTimer(min: number): Promise<void> {
 
 /**
  * Enable or disable Daylight Saving Time.
- * @param enabled  true = DST on, false = DST off
  */
 export async function setDST(enabled: boolean): Promise<void> {
   log.debug(`enDST d=${enabled ? 1 : 0}`);
@@ -105,41 +127,62 @@ export async function setDST(enabled: boolean): Promise<void> {
 }
 
 /**
- * Set the timezone offset.
- * @param tz  Hours offset, e.g. -8 for PST, +1 for CET
+ * Set the timezone by sending the raw offset hours to the clock.
+ * The firmware's /time endpoint accepts the offset directly (e.g. -8, +3).
+ * Fractional offsets like 5.5 (India) are supported.
  */
-export async function setTimezone(tz: number): Promise<void> {
-  log.debug(`time t=${tz}`);
-  await get("/time", { t: tz });
+export async function setTimezone(tzOffsetHours: number): Promise<void> {
+  log.debug(`time t=${tzOffsetHours}`);
+  await get("/time", { t: tzOffsetHours });
 }
 
 /**
- * Push the current system time to the clock.
- * Uses the server's local time — run this on a machine with correct time/tz set.
+ * Push the current time to the clock with an explicit timezone offset applied.
+ *
+ * Takes UTC now, shifts it by tzOffsetHours, and sends the resulting
+ * decomposed local time via /uptm. This is called every second by the
+ * timesync loop so the clock never drifts.
+ *
+ * Using UTC math (Date.getUTC*) means the result is correct regardless of
+ * what timezone the server/container is running in.
+ *
+ * @param tzOffsetHours  e.g. -8 for PST, +3 for MSK, 5.5 for IST, 0 for UTC
  */
-export async function syncTime(): Promise<void> {
-  const now = new Date();
+export async function syncTimeWithOffset(tzOffsetHours: number): Promise<void> {
+  const utcMs = Date.now() + tzOffsetHours * 3_600_000;
+  const t = new Date(utcMs);
+
   const params = {
-    // t=0 means no DST adjustment from the device side (we already send correct local time)
+    // t=0: we manage DST ourselves by choosing the right offset
     t: 0,
-    h: now.getHours(),
-    m: now.getMinutes(),
-    s: now.getSeconds(),
-    y: now.getFullYear(),
-    // HAR shows mo as 0-based
-    mo: now.getMonth(),
-    d: now.getDate(),
+    h: t.getUTCHours(),
+    m: t.getUTCMinutes(),
+    s: t.getUTCSeconds(),
+    y: t.getUTCFullYear(),
+    // firmware expects 0-based month (matches JS Date.getMonth())
+    mo: t.getUTCMonth(),
+    d: t.getUTCDate(),
   };
-  log.debug("uptm", params);
+
+  log.debug(
+    `uptm offset=${tzOffsetHours}h → ${String(params.h).padStart(2, "0")}:${String(params.m).padStart(2, "0")}:${String(params.s).padStart(2, "0")}`,
+  );
   await get("/uptm", params);
 }
 
 /**
+ * One-shot sync wrapper used by the manual "Sync Time" button.
+ */
+export async function syncTime(tzOffsetHours = 0): Promise<void> {
+  await syncTimeWithOffset(tzOffsetHours);
+}
+
+/**
  * Fetch firmware version string from the clock.
+ * Converts raw int e.g. 3101 → "3.101".
  */
 export async function getFirmwareVersion(): Promise<string> {
   const data = await get<{ ver: number }>("/version");
-  // Convert e.g. 3101 → "3.101"
   const raw = String(data.ver);
   return `${raw.slice(0, raw.length - 3)}.${raw.slice(-3)}`;
 }

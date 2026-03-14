@@ -1,4 +1,9 @@
 import { EntityConfig } from "./types.js";
+import {
+  COLOR_MODE_OPTIONS,
+  DISPLAY_STYLE_OPTIONS,
+  TIMEZONE_LABELS,
+} from "./types.js";
 
 export const ENTITIES: EntityConfig[] = [
   // ── Per-tube lights ──────────────────────────────────────────────────────
@@ -52,25 +57,42 @@ export const ENTITIES: EntityConfig[] = [
     command: true,
   },
 
-  // ── Display ──────────────────────────────────────────────────────────────
+  // ── Display Style (Normal / Carry / Jumping — s= param alongside m=1) ───
+  // Only applies when Color Mode is Custom. In HA this is a separate select
+  // so you can combine e.g. Custom + Jumping.
   {
     domain: "select",
-    name: "Display Mode",
-    attr: "mode",
-    icon: "mdi:clock-outline",
+    name: "Display Style",
+    attr: "display_style",
+    icon: "mdi:television-play",
     command: true,
-    options: ["Clock", "Countdown", "Cycle"],
+    options: DISPLAY_STYLE_OPTIONS,
   },
+
+  // ── Color Mode (m= param: Custom/Rainbow/Breathing/Flowing/Test) ────────
+  // When set to anything other than Custom the per-tube lights become
+  // decorative (the effect overrides individual colours).
   {
     domain: "select",
-    name: "Cycle Speed",
-    attr: "speed",
-    icon: "mdi:speedometer",
+    name: "Color Mode",
+    attr: "color_mode",
+    icon: "mdi:palette",
     command: true,
-    options: ["Slow", "Medium", "Fast"],
+    options: COLOR_MODE_OPTIONS,
   },
 
   // ── Time ─────────────────────────────────────────────────────────────────
+
+  // Full timezone dropdown with UTC offset labels — 25 entries matching the
+  // firmware web UI exactly (UTC-12 … UTC+12, including UTC+5:30 for India).
+  {
+    domain: "select",
+    name: "Timezone",
+    attr: "timezone",
+    icon: "mdi:earth",
+    command: true,
+    options: TIMEZONE_LABELS,
+  },
   {
     domain: "switch",
     name: "24h Time Format",
@@ -84,17 +106,6 @@ export const ENTITIES: EntityConfig[] = [
     attr: "dst",
     icon: "mdi:sun-clock",
     command: true,
-  },
-  {
-    domain: "number",
-    name: "Timezone Offset",
-    attr: "timezone",
-    icon: "mdi:earth",
-    command: true,
-    unit: "h",
-    min: -12,
-    max: 14,
-    step: 1,
   },
   {
     domain: "button",

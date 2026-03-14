@@ -100,6 +100,7 @@ export function publishNumberDiscovery(
     max: entity.max ?? 100,
     step: entity.step ?? 1,
     unit_of_measurement: entity.unit,
+    mode: "box",
   });
 }
 

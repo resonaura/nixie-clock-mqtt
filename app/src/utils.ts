@@ -1,4 +1,10 @@
 import { NixieConfig } from "./types.js";
+import {
+  COLOR_MODE_NAMES,
+  DISPLAY_STYLE_NAMES,
+  TIMEZONES,
+  tzByOffset,
+} from "./types.js";
 import { env } from "./config.js";
 
 // ── Logging ───────────────────────────────────────────────────────────────────
@@ -103,30 +109,47 @@ export function rgbToHsv(
   };
 }
 
+// ── Brightness helpers ────────────────────────────────────────────────────────
+
 /**
- * HA MQTT brightness (0–255) → clock V value (0–100)
+ * HA MQTT brightness (0–255) → clock V value (0–100).
  */
 export function haBrightToV(brightness: number): number {
   return Math.round((brightness / 255) * 100);
 }
 
 /**
- * Clock V value (0–100) → HA MQTT brightness (0–255)
+ * Clock V value (0–100) → HA MQTT brightness (0–255).
  */
 export function vToHaBright(v: number): number {
   return Math.round((v / 100) * 255);
 }
 
 /**
- * Clock config stores saturation as 0–254; normalise to 0–100 for HA.
+ * Convert raw saturation from /config (0–254) to percent (0–100).
+ * The firmware stores saturation as 0–254, same scale as brightness.
+ * Formula used in the firmware JS: s / 2.55
  */
 export function configSatToPercent(s: number): number {
-  return Math.round((s / 254) * 100);
+  return Math.round(s / 2.55);
+}
+
+/**
+ * Convert raw brightness (light field, 0–254) from /config to percent (0–100).
+ * Formula used in the firmware JS: light / 2.55
+ */
+export function configLightToV(light: number): number {
+  return Math.round(light / 2.55);
 }
 
 /**
  * Extract per-tube HSV from a NixieConfig snapshot.
+ *
  * Returns h (0–360), s (0–100), v (0–100).
+ *
+ * NOTE: v is GLOBAL — all tubes share the same brightness (`light` field).
+ * Setting per-tube brightness in HA will actually adjust the global level.
+ * This matches how the firmware works: there is no independent per-tube v.
  */
 export function tubeHSV(
   cfg: NixieConfig,
@@ -135,12 +158,39 @@ export function tubeHSV(
   const raw = cfg as unknown as Record<string, number>;
   const h = raw[`h${tube}`]!;
   const s = configSatToPercent(raw[`s${tube}`]!);
-  const v = Math.round((cfg.light / 254) * 100);
+  const v = configLightToV(cfg.light);
   return { h, s, v };
+}
+
+// ── Timezone helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Get the timezone label for the current tz offset from /config.
+ * Falls back to a plain "UTC±X" label if the offset isn't in our list.
+ */
+export function tzLabel(tzOffset: number): string {
+  const entry = tzByOffset(tzOffset);
+  if (entry) return entry.label;
+  // fallback for any offset not in the list
+  const sign = tzOffset >= 0 ? "+" : "";
+  return `UTC${sign}${tzOffset}:00`;
+}
+
+/**
+ * Convert a timezone label string back to the numeric offset.
+ * Returns 0 (UTC) if not found.
+ */
+export function tzOffsetFromLabel(label: string): number {
+  const entry = TIMEZONES.find((z) => z.label === label);
+  return entry ? entry.offset : 0;
 }
 
 // ── State normalisation ───────────────────────────────────────────────────────
 
+/**
+ * Convert a raw config value to the string that gets published to the
+ * corresponding HA MQTT state topic.
+ */
 export function normalizeValue(
   domain: string,
   attr: string,
@@ -151,13 +201,14 @@ export function normalizeValue(
   }
 
   if (domain === "select") {
-    if (attr === "mode") {
-      return (
-        { 1: "Clock", 2: "Countdown", 3: "Cycle" }[Number(value)] ?? "Clock"
-      );
+    if (attr === "color_mode") {
+      return COLOR_MODE_NAMES[Number(value)] ?? "Custom";
     }
-    if (attr === "speed") {
-      return { 1: "Slow", 2: "Medium", 3: "Fast" }[Number(value)] ?? "Medium";
+    if (attr === "display_style") {
+      return DISPLAY_STYLE_NAMES[Number(value)] ?? "Normal";
+    }
+    if (attr === "timezone") {
+      return tzLabel(Number(value));
     }
   }
 
