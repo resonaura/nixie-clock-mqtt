@@ -13,6 +13,7 @@ import {
   setTimer,
   setDST,
   setTimezone,
+  setTimeFormat,
   syncTime,
   getFirmwareVersion,
 } from "./nixie.js";
@@ -273,11 +274,9 @@ async function handleDST(payload: string): Promise<void> {
 }
 
 async function handleTimeFormat(payload: string): Promise<void> {
-  // Firmware v3.101 has no confirmed standalone HTTP endpoint for 12/24h toggle
-  // outside of the web UI. Log a warning until the endpoint is confirmed.
-  log.warn(
-    `time_format (${payload}): no confirmed API endpoint in firmware v3.101`,
-  );
+  const use24h = payload === "ON";
+  await setTimeFormat(use24h);
+  log.info(`Time format set to ${use24h ? "24h" : "12h"}`);
 }
 
 async function handleAlarm(

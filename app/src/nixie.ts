@@ -127,13 +127,42 @@ export async function setDST(enabled: boolean): Promise<void> {
 }
 
 /**
- * Set the timezone by sending the raw offset hours to the clock.
- * The firmware's /time endpoint accepts the offset directly (e.g. -8, +3).
- * Fractional offsets like 5.5 (India) are supported.
+ * Set the timezone on the clock.
+ *
+ * The firmware's /time endpoint does NOT accept a raw UTC offset.
+ * It expects a 1-based index into the firmware's internal timezone list:
+ *
+ *   index = tzOffsetHours + 13
+ *
+ * Examples:
+ *   UTC-12  → t=1
+ *   UTC+0   → t=13
+ *   UTC+3   → t=16  (Moscow)
+ *   UTC+5.5 → t=18.5  (India — firmware stores as fractional)
+ *   UTC+12  → t=25
+ *
+ * This was confirmed by deobfuscating initTimeZone (reads cfg.tz, adds 13,
+ * stores as dataset.value) and sendTimeZone (reads that value, sends as t=).
  */
 export async function setTimezone(tzOffsetHours: number): Promise<void> {
-  log.debug(`time t=${tzOffsetHours}`);
-  await get("/time", { t: tzOffsetHours });
+  const t = tzOffsetHours + 13;
+  log.debug(`time t=${t} (offset=${tzOffsetHours})`);
+  await get("/time", { t });
+}
+
+/**
+ * Set 12h / 24h display format.
+ *
+ * The firmware's /tm endpoint receives s=12 or s=24 — the literal hour-count
+ * value, NOT a boolean flag. Confirmed by deobfuscating sendTubeMode and the
+ * radio button values in the HTML (radio12 / radio24).
+ *
+ * @param use24h  true → 24h mode (s=24), false → 12h mode (s=12)
+ */
+export async function setTimeFormat(use24h: boolean): Promise<void> {
+  const s = use24h ? 24 : 12;
+  log.debug(`tm s=${s}`);
+  await get("/tm", { s });
 }
 
 /**
