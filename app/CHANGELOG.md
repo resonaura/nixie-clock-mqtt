@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.3.4 — Revert to Sequential Tube Color Updates
+
+### 🔧 Internal
+
+- **Reverted `setAllTubesColor` back to sequential requests** — parallel `Promise.all` caused instability on the device (firmware HTTP server couldn't handle 6 simultaneous requests reliably). Sequential `await` per tube is slower but stable.
+
+---
+
 ## v1.3.3 — Instant HA State Updates After Commands
 
 ### ✨ Improvements
