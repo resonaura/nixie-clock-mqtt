@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.3.3 — Instant HA State Updates After Commands
+
+### ✨ Improvements
+
+- **State updates are now immediate after any command** — previously after sending a command (color, brightness, timezone, alarm, etc.) HA would wait up to 500ms then re-poll, but skip publishing if the device config hadn't changed yet. Now the bridge sets a `forcePollPublish` flag before polling so HA always gets the updated state reflected instantly, regardless of whether the device config diff is detected.
+- **Removed artificial 500ms delay** — the post-command poll now fires immediately instead of after a 500ms `setTimeout`.
+
+---
+
 ## v1.3.2 — Parallel Tube Color Updates
 
 ### ✨ Improvements

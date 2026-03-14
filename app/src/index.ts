@@ -50,6 +50,9 @@ let lastConfig: NixieConfig | null = null;
 // Last non-zero brightness (v, 0–100). Used to restore brightness on ON command
 // when the device reports light=0 (all tubes off).
 let lastNonZeroV = 100;
+// When true, the next poll() will publish state even if config hasn't changed.
+// Set after every command so HA gets instant feedback.
+let forcePollPublish = false;
 
 // ── MQTT client ───────────────────────────────────────────────────────────────
 
@@ -153,8 +156,13 @@ async function poll(): Promise<void> {
 
     publish(AVAILABILITY_TOPIC, "online", true);
 
-    if (JSON.stringify(cfg) !== JSON.stringify(lastConfig)) {
-      log.info("Config changed — publishing state");
+    const changed = JSON.stringify(cfg) !== JSON.stringify(lastConfig);
+
+    if (changed || forcePollPublish) {
+      if (changed) log.info("Config changed — publishing state");
+      else log.debug("Force-publishing state after command");
+
+      forcePollPublish = false;
 
       // (Re)start timesync when tz changes or on first fetch
       if (lastConfig === null || lastConfig.tz !== cfg.tz) {
@@ -307,8 +315,9 @@ client.on("message", async (topic, msg) => {
       return;
     }
 
-    // Re-poll 500ms after command to reflect new state
-    setTimeout(() => void poll(), 500);
+    // Force-publish state on next poll so HA reflects the change immediately
+    forcePollPublish = true;
+    void poll();
   } catch (err) {
     log.error(`Command failed for ${attr}:`, (err as Error).message);
   }
