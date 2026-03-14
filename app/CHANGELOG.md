@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.3.1 — Fix: Restore Brightness on Light ON
+
+### 🐛 Bug Fixes
+
+- **Turning any tube back ON after OFF did nothing** — when all tubes are off the device reports `light=0`, so reading brightness from `/config` gave `v=0` and the ON command sent `v=0` (still off). Fixed by tracking `lastNonZeroV` — the last non-zero brightness seen from the device or set via a command. This value is restored whenever an ON command arrives without an explicit brightness.
+
+---
+
 ## v1.3.0 — Time Fix, UI Cleanup
 
 ### 🐛 Bug Fixes

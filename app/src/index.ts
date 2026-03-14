@@ -47,6 +47,9 @@ const MQTT_DEVICE: MQTTDevice = {
 // ── State ─────────────────────────────────────────────────────────────────────
 
 let lastConfig: NixieConfig | null = null;
+// Last non-zero brightness (v, 0–100). Used to restore brightness on ON command
+// when the device reports light=0 (all tubes off).
+let lastNonZeroV = 100;
 
 // ── MQTT client ───────────────────────────────────────────────────────────────
 
@@ -81,6 +84,7 @@ client.on("connect", () => {
 
 function publishState(cfg: NixieConfig): void {
   const globalV = configLightToV(cfg.light);
+  if (globalV > 0) lastNonZeroV = globalV;
 
   // Current color mode name (for effect state on all_tubes)
   const effectName = COLOR_MODE_NAMES[cfg.mode] ?? "Custom";
@@ -194,12 +198,13 @@ async function handleLightTube(
   // Base HSV from current state
   let h = 0,
     s = 100,
-    v = 100;
+    v = lastNonZeroV;
   if (cfg) {
     const base = tubeHSV(cfg, tube === "all" ? 1 : tube);
     h = base.h;
     s = base.s;
-    v = base.v;
+    // Use lastNonZeroV when device reports 0 (tubes are off)
+    v = base.v > 0 ? base.v : lastNonZeroV;
   }
 
   if (msg.state === "OFF") {
@@ -218,6 +223,7 @@ async function handleLightTube(
 
   if (msg.brightness !== undefined) {
     v = haBrightToV(msg.brightness);
+    if (v > 0) lastNonZeroV = v;
   }
 
   if (tube === "all") {
