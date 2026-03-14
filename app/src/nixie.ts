@@ -57,9 +57,9 @@ export async function setAllTubesColor(
   s: number,
   v: number,
 ): Promise<void> {
-  for (let i = 1; i <= 6; i++) {
-    await setTubeColor(i, h, s, v);
-  }
+  await Promise.all(
+    Array.from({ length: 6 }, (_, i) => setTubeColor(i + 1, h, s, v)),
+  );
 }
 
 /**

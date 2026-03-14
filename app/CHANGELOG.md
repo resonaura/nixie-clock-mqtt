@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.3.2 — Parallel Tube Color Updates
+
+### ✨ Improvements
+
+- **All 6 tube color requests now fire in parallel** — previously `setAllTubesColor` sent requests sequentially (one after another), causing a visible ripple effect when changing color on "All Tubes". Now all 6 `/tubecolor` requests are sent simultaneously via `Promise.all`, so all tubes update at the same time.
+
+---
+
+
 ## v1.3.1 — Fix: Restore Brightness on Light ON
 
 ### 🐛 Bug Fixes
