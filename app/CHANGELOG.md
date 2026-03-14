@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.2.1 — Build Cache Bust
+
+### 🔧 Internal
+
+- Version bump to force a clean Supervisor rebuild and clear any stale Docker layer cache.
+- No functional changes.
+
+---
+
 ## v1.2.0 — Critical Bug Fixes (Firmware JS Deobfuscation Audit)
 
 ### 🐛 Bug Fixes
