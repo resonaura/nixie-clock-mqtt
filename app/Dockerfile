@@ -1,31 +1,34 @@
+# Global ARG must be declared before any FROM so it is visible in all stages.
+# It is also re-declared inside stage 2 to bring it into that stage's scope.
+ARG BUILD_FROM
+
 # ── Stage 1: build ────────────────────────────────────────────────────────────
-# Use the official Node.js alpine image — has npm/node already, no apt dance.
+# Official Node.js alpine image — Node/npm already present, no apt dance needed.
 FROM node:22-alpine AS builder
 
 WORKDIR /build
 
-# Copy manifests first so this layer is cached unless deps change
+# Copy manifests first — this layer is cached until deps actually change
 COPY package.json package-lock.json ./
 
-# Install ALL deps (including devDependencies needed for tsc)
+# Install ALL deps (devDependencies needed for tsc)
 RUN npm ci --prefer-offline
 
-# Copy source and compile
+# Copy source and tsconfig, then compile
 COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
 
 RUN npm run build
 
-# Prune to production-only node_modules
+# Drop devDependencies — only prod deps go into the runtime image
 RUN npm prune --omit=dev
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
-# Use the HA base image so the supervisor / s6-overlay / bashio are present.
+# Re-declare ARG so its value is available in this stage's scope.
 ARG BUILD_FROM
 FROM $BUILD_FROM
 
-# Node.js from the NodeSource binary — much faster than compiling,
-# but we only need it once at layer-build time and it gets cached.
+# Install Node.js via NodeSource — this layer is cached after the first build
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
@@ -34,7 +37,7 @@ RUN apt-get update \
 
 WORKDIR /usr/src/app
 
-# Copy only what the runtime needs: compiled JS + prod node_modules
+# Copy only what runtime needs: compiled JS + production node_modules
 COPY --from=builder /build/dist        ./dist
 COPY --from=builder /build/node_modules ./node_modules
 
