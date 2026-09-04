@@ -8,6 +8,7 @@
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Add--on-orange.svg)](https://www.home-assistant.io/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6.svg?logo=typescript&logoColor=white)](app)
 [![Docker GHCR](https://img.shields.io/badge/Docker-GHCR-2496ED?logo=docker&logoColor=white)](https://github.com/resonaura/nixie-clock-mqtt/pkgs/container/nixie-clock-mqtt)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/resonaura)
 
 A Node.js/TypeScript bridge that connects the **Clocteck RGB Tube Clock** (LED Nixie Simulation, firmware v3.101) to **Home Assistant** via MQTT.  
 All controls are exposed automatically using [Home Assistant MQTT Discovery](https://www.home-assistant.io/docs/mqtt/discovery/) — zero manual YAML required.
