@@ -1,8 +1,12 @@
-<p align="center">
-  <img src="app/icon.png" width="120" alt="Clocteck RGB Tube Clock" />
-</p>
+<img src="icon.png" width="64" height="64" alt="Clocteck RGB Tube Clock Icon" />
 
 # Clocteck RGB Tube Clock — MQTT Bridge for Home Assistant
+
+[![Version](https://img.shields.io/badge/version-1.3.5-blue.svg)](CHANGELOG.md)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Add--on-orange.svg)](https://www.home-assistant.io/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6.svg?logo=typescript&logoColor=white)](app)
+[![Docker GHCR](https://img.shields.io/badge/Docker-GHCR-2496ED?logo=docker&logoColor=white)](https://github.com/resonaura/nixie-clock-mqtt/pkgs/container/nixie-clock-mqtt)
 
 A Node.js/TypeScript bridge that connects the **Clocteck RGB Tube Clock** (LED Nixie Simulation, firmware v3.101) to **Home Assistant** via MQTT.  
 All controls are exposed automatically using [Home Assistant MQTT Discovery](https://www.home-assistant.io/docs/mqtt/discovery/) — zero manual YAML required.
@@ -58,19 +62,35 @@ All controls are exposed automatically using [Home Assistant MQTT Discovery](htt
 
 ## 🚀 Installation
 
-### Option A — Home Assistant Add-on (recommended)
+### Option 1: Home Assistant Add-on (Recommended)
 
-1. Copy the `app/` folder to your HA config directory:
-   ```bash
-   scp -r ./app/ root@homeassistant.local:/config/addons/nixie_clock/
+#### 1-Click Install
+
+[![Open your Home Assistant instance and show the add add-on repository dialog with a specific repository URL pre-filled.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fresonaura%2Fnixie-clock-mqtt)
+
+#### Manual Install (Home Assistant)
+
+1. Navigate to **Settings → Add-ons → Add-on Store → ⋮ → Repositories** in Home Assistant.
+2. Add repository:
+   ```text
+   https://github.com/resonaura/nixie-clock-mqtt
    ```
-2. In Home Assistant: **Settings → Add-ons → Add-on Store → ⋮ → Check for updates**  
-   The addon appears under **Local add-ons**.
-3. Click **Install**, then go to **Configuration** and set your clock's IP.
-4. Click **Start** — all entities appear in HA automatically via MQTT Discovery.
+3. Find and select **Clocteck RGB Tube Clock** in the Add-on Store and click **Install**.
+4. Configure your clock's IP address in the **Configuration** tab.
+5. Click **Start** — all entities appear automatically in Home Assistant!
 
 > The addon uses `services: mqtt:need`, so if the **Mosquitto broker** add-on is installed,  
 > broker credentials are read automatically — no manual MQTT config needed.
+
+#### Sideload via Local Add-ons
+
+1. Copy the `app/` folder to your HA config directory:
+   ```bash
+   scp -r ./app/ root@homeassistant.local:/config/addons/nixie-clock/
+   ```
+2. In Home Assistant: **Settings → Add-ons → Add-on Store → ⋮ → Check for updates**  
+   The addon appears under **Local add-ons**.
+3. Click **Install**, configure clock IP, and start.
 
 ---
 

@@ -1,0 +1,10 @@
+{
+  "name": "nixie-clock-mqtt",
+  "version": "1.3.5",
+  "private": true,
+  "scripts": {
+    "start": "npm --prefix app start",
+    "dev": "npm --prefix app run dev",
+    "build": "npm --prefix app run build"
+  }
+}

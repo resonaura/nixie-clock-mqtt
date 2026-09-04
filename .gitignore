@@ -3,3 +3,4 @@ dist
 .env
 *.png
 !app/icon.png
+!icon.png
