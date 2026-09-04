@@ -4,6 +4,7 @@
 
 [![Version](https://img.shields.io/badge/version-1.3.5-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Build & Publish](https://github.com/resonaura/nixie-clock-mqtt/actions/workflows/publish.yaml/badge.svg)](https://github.com/resonaura/nixie-clock-mqtt/actions/workflows/publish.yaml)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Add--on-orange.svg)](https://www.home-assistant.io/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6.svg?logo=typescript&logoColor=white)](app)
 [![Docker GHCR](https://img.shields.io/badge/Docker-GHCR-2496ED?logo=docker&logoColor=white)](https://github.com/resonaura/nixie-clock-mqtt/pkgs/container/nixie-clock-mqtt)
