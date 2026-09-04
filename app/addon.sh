@@ -1,10 +1,16 @@
-#!/usr/bin/env bash
+#!/usr/bin/with-contenv bashio
 set -e
+
+# Sourcing bashio in case script was executed directly with bash instead of bashio interpreter
+if [ -f /usr/lib/bashio/bashio.sh ]; then
+  # shellcheck source=/dev/null
+  source /usr/lib/bashio/bashio.sh
+fi
 
 CONFIG_PATH=/data/options.json
 ENV_FILE="/usr/src/app/.env"
 
-if command -v bashio >/dev/null 2>&1 && [ -f "$CONFIG_PATH" ]; then
+if [ -f "$CONFIG_PATH" ]; then
   # ── Read MQTT credentials from HA Supervisor (services: mqtt:need) ────────────
   if bashio::services.available mqtt; then
     SYSTEM_MQTT_HOST="$(bashio::services mqtt 'host')"
@@ -58,10 +64,12 @@ EOF
   bashio::log.info " Poll   : every ${POLL_INTERVAL}s"
   bashio::log.info " Log    : ${LOG_LEVEL}"
   bashio::log.info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-else
-  echo "🚀 Running Clocteck RGB Tube Clock in standalone Docker mode..."
-  echo "  Device : http://${NIXIE_HOST:-192.168.5.108}"
-  echo "  MQTT   : ${MQTT_URL:-mqtt://localhost:1883}"
+fi
+
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  source "$ENV_FILE"
+  set +a
 fi
 
 exec node /usr/src/app/dist/index.js

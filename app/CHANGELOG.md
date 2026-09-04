@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.3.6 — Home Assistant Add-on Shebang & Bashio Fix
+
+### 🐛 Bug Fixes
+
+- **Fixed `bashio: command not found` on add-on startup**: Updated `app/addon.sh` shebang to `#!/usr/bin/with-contenv bashio` and added explicit fallback sourcing for `/usr/lib/bashio/bashio.sh`. In Home Assistant s6-overlay containers, scripts must run under the `bashio` interpreter to define `bashio::services.available` and `bashio::log.*` functions.
+- **Standalone Docker entrypoint separation**: Added dedicated `docker-entrypoint.sh` for standalone Docker runtime images, isolating non-HA containers from Home Assistant `bashio` requirements.
+- **Preload generated `.env`**: Sourced and exported `/usr/src/app/.env` prior to launching the Node.js process so configuration is immediately accessible before module evaluation.
+
 ## v1.3.5 — Optimistic Light State Updates
 
 ### ✨ Improvements

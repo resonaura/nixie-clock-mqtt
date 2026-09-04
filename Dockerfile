@@ -19,7 +19,7 @@ WORKDIR /usr/src/app
 
 COPY --from=builder /build/dist ./dist
 COPY --from=builder /build/node_modules ./node_modules
-COPY app/addon.sh /addon.sh
-RUN chmod +x /addon.sh
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
-CMD ["/addon.sh"]
+CMD ["/docker-entrypoint.sh"]
