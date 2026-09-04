@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.3.7 — Remove Redundant Bashio Sourcing
+
+### 🐛 Bug Fixes
+
+- **Fixed `BASHIO_VERSION: readonly variable` startup error**: Removed manual `source /usr/lib/bashio/bashio.sh` from `app/addon.sh`. The `bashio` interpreter invoked via `#!/usr/bin/with-contenv bashio` already sources `bashio.sh` automatically; sourcing it a second time triggered a fatal bash error on the `readonly BASHIO_VERSION` assignment under `set -e`.
+
 ## v1.3.6 — Home Assistant Add-on Shebang & Bashio Fix
 
 ### 🐛 Bug Fixes
