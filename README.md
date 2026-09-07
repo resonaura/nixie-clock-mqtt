@@ -1,4 +1,4 @@
-<img src="https://raw.githubusercontent.com/resonaura/nixie-clock-mqtt/main/icon.png" width="64" height="64" alt="Clocteck RGB Tube Clock Icon" />
+<img src="https://raw.githubusercontent.com/resonaura/nixie-clock-mqtt/main/icon.png" width="64" alt="Clocteck RGB Tube Clock Icon" />
 
 # Clocteck RGB Tube Clock — MQTT Bridge for Home Assistant
 
