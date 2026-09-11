@@ -1,3 +1,4 @@
+import http from "node:http";
 import axios, { AxiosInstance } from "axios";
 import { env } from "./config.js";
 import { NixieConfig } from "./types.js";
@@ -9,21 +10,42 @@ function createHttpClient(): AxiosInstance {
   return axios.create({
     baseURL: `http://${env.NIXIE_HOST}`,
     timeout: 5_000,
+    httpAgent: new http.Agent({ keepAlive: false }),
+    headers: { Connection: "close" },
   });
 }
 
-let http = createHttpClient();
+let httpClient = createHttpClient();
 
 export function reinitClient(): void {
-  http = createHttpClient();
+  httpClient = createHttpClient();
+}
+
+let requestQueue: Promise<unknown> = Promise.resolve();
+
+function enqueue<T>(fn: () => Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    requestQueue = requestQueue
+      .then(async () => {
+        try {
+          const result = await fn();
+          resolve(result);
+        } catch (err) {
+          reject(err);
+        }
+      })
+      .catch(() => {});
+  });
 }
 
 async function get<T>(
   path: string,
   params?: Record<string, string | number>,
 ): Promise<T> {
-  const res = await http.get<T>(path, { params });
-  return res.data;
+  return enqueue(async () => {
+    const res = await httpClient.get<T>(path, { params });
+    return res.data;
+  });
 }
 
 // ── API calls ─────────────────────────────────────────────────────────────────

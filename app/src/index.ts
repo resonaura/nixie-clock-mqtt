@@ -248,12 +248,21 @@ async function handleLightTube(
       log.warn(`Unknown effect/color mode: ${msg.effect}`);
       return;
     }
-    // Optimistically reflect new effect in HA immediately
-    const { h, s } = cfg ? tubeHSV(cfg, 1) : { h: 0, s: 100 };
-    publishLightOptimistic("all", h, s, lastNonZeroV, msg.effect);
-    // Preserve current display style (outcarry), default Normal
     await setColorMode(m, cfg?.outcarry ?? 1);
-    return;
+    if (cfg) cfg.mode = m;
+
+    const hasExplicitColorOrBrightness =
+      msg.color !== undefined ||
+      msg.brightness !== undefined ||
+      msg.hs_color !== undefined ||
+      msg.rgb_color !== undefined;
+
+    // Only return early if this was solely an effect selection without color or brightness
+    if (!hasExplicitColorOrBrightness) {
+      const { h, s } = cfg ? tubeHSV(cfg, 1) : { h: 0, s: 100 };
+      publishLightOptimistic("all", h, s, lastNonZeroV, msg.effect);
+      return;
+    }
   }
 
   // Base HSV from current state
@@ -327,7 +336,8 @@ async function handleLightTube(
   }
 
   // Optimistically publish new color/brightness to HA before device responds
-  const effectName = cfg ? (COLOR_MODE_NAMES[cfg.mode] ?? "Custom") : undefined;
+  const effectName =
+    msg.effect ?? (cfg ? (COLOR_MODE_NAMES[cfg.mode] ?? "Custom") : undefined);
   publishLightOptimistic(
     tube,
     h,

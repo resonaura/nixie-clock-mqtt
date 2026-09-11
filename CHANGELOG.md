@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.3.9 — Fix Scene Effect Fallthrough & Hardware Request Serialization
+
+### 🐛 Bug Fixes
+
+- **Fixed scene color and brightness ignored when `effect` is provided**: Home Assistant scenes send `"effect": "Custom"` along with explicit `color` and `brightness`. Previously, the presence of `msg.effect` triggered an early `return` after changing the color mode, causing the actual color and brightness in the scene to be completely discarded. The handler now continues processing color and brightness when explicit values are present.
+- **Sequential request queue (FIFO)**: All HTTP requests to the clock (`/config`, `/tubecolor`, `/mode`, `/uptm`) are now serialized through a FIFO promise queue with `Connection: close`. This prevents concurrent TCP socket exhaustion on the ESP microcontroller, eliminating `timeout of 5000ms exceeded` and `stream has been aborted` errors under heavy polling or rapid multi-tube updates.
+- **Concurrent timesync guard**: Ensured `push()` in `timesync` does not queue overlapping time synchronization requests if a previous request is still awaiting completion.
+
 ## v1.3.8 — Fix Color & Brightness Application from Home Assistant Scenes
 
 ### 🐛 Bug Fixes

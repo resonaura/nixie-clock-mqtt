@@ -37,11 +37,17 @@ export function getCurrentOffset(): number {
   return currentOffset;
 }
 
+let isSyncing = false;
+
 async function push(): Promise<void> {
+  if (isSyncing) return;
+  isSyncing = true;
   try {
     await syncTimeWithOffset(currentOffset);
   } catch (err) {
     // Don't spam logs — one warn per failure is enough
     log.warn("timesync push failed:", (err as Error).message);
+  } finally {
+    isSyncing = false;
   }
 }
