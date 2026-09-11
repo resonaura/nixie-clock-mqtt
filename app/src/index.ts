@@ -31,6 +31,7 @@ import {
   vToHaBright,
   configLightToV,
   tzLabel,
+  rgbToHsv,
 } from "./utils.js";
 
 // ── MQTT device descriptor ────────────────────────────────────────────────────
@@ -278,14 +279,51 @@ async function handleLightTube(
     return;
   }
 
+  let colorSpecified = false;
+
+  // 1. Color extraction supporting all Home Assistant color formats
   if (msg.color) {
-    h = Math.round(msg.color.h);
-    s = Math.round(msg.color.s);
+    if (typeof msg.color.h === "number" && typeof msg.color.s === "number") {
+      h = Math.round(msg.color.h);
+      s = Math.round(msg.color.s);
+      colorSpecified = true;
+    } else if (
+      typeof msg.color.r === "number" &&
+      typeof msg.color.g === "number" &&
+      typeof msg.color.b === "number"
+    ) {
+      const hsv = rgbToHsv(msg.color.r, msg.color.g, msg.color.b);
+      h = hsv.h;
+      s = hsv.s;
+      colorSpecified = true;
+    }
+  } else if (Array.isArray(msg.hs_color) && msg.hs_color.length >= 2) {
+    h = Math.round(msg.hs_color[0]);
+    s = Math.round(msg.hs_color[1]);
+    colorSpecified = true;
+  } else if (Array.isArray(msg.rgb_color) && msg.rgb_color.length >= 3) {
+    const hsv = rgbToHsv(msg.rgb_color[0], msg.rgb_color[1], msg.rgb_color[2]);
+    h = hsv.h;
+    s = hsv.s;
+    colorSpecified = true;
   }
 
+  // 2. Brightness extraction with safeguards
   if (msg.brightness !== undefined) {
     v = haBrightToV(msg.brightness);
     if (v > 0) lastNonZeroV = v;
+  } else if (msg.state === "ON" && v === 0) {
+    // When scene/automation sends ON without explicit brightness, restore last known brightness
+    v = lastNonZeroV > 0 ? lastNonZeroV : 100;
+  }
+
+  // 3. Mode safeguard: If an explicit color is set and the clock was in an animation
+  // effect mode (Rainbow=2, Breathing=3, Flowing=4, Test=5), switch to Custom (mode=1)
+  // so the hardware displays the static color instead of continuing the animation.
+  if (colorSpecified && cfg && cfg.mode !== 1) {
+    log.info(`Switching mode from ${COLOR_MODE_NAMES[cfg.mode] ?? cfg.mode} to Custom (1) for static color`);
+    await setColorMode(1, cfg.outcarry ?? 1);
+    cfg.mode = 1;
   }
 
   // Optimistically publish new color/brightness to HA before device responds

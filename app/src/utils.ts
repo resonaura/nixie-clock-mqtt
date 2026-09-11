@@ -113,9 +113,12 @@ export function rgbToHsv(
 
 /**
  * HA MQTT brightness (0–255) → clock V value (0–100).
+ * Guarantees that any non-zero brightness (e.g. 1% in HA = brightness 2 or 3)
+ * maps to at least 1% on the clock rather than rounding down to 0 (off).
  */
 export function haBrightToV(brightness: number): number {
-  return Math.round((brightness / 255) * 100);
+  if (brightness <= 0) return 0;
+  return Math.max(1, Math.round((brightness / 255) * 100));
 }
 
 /**

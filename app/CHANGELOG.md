@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.3.8 — Fix Color & Brightness Application from Home Assistant Scenes
+
+### 🐛 Bug Fixes
+
+- **Fixed color not applying from Home Assistant Scenes**: Home Assistant scenes and automations can send color payloads in formats other than `{ h, s }` (such as `{ r, g, b }`, `rgb_color: [r, g, b]`, or `hs_color: [h, s]`). Expanded `LightCommand` parsing to detect and convert all standard HA color formats to HSV using `rgbToHsv`.
+- **Automatic fallback to Custom mode (`mode=1`) on color change**: If an explicit color is received while the clock is running an animation effect (Rainbow, Breathing, Flowing, Test), the bridge now automatically switches the clock mode back to `Custom` (`mode=1`). Previously, sending `/tubecolor` while in an effect mode would update internal colors but leave the animation effect active, preventing the static color from displaying.
+- **Low brightness rounding safeguard**: Guaranteed that any positive non-zero brightness from HA (such as 1% brightness = HA value 2 or 3) maps to at least `v=1` on the clock (`light=3`) rather than rounding down to 0 (which inadvertently turned off the light).
+- **`state: "ON"` payload safeguard**: When scenes send `state: "ON"` without an explicit brightness field, the bridge now properly restores `lastNonZeroV` instead of leaving the brightness at 0.
+
 ## v1.3.7 — Remove Redundant Bashio Sourcing
 
 ### 🐛 Bug Fixes

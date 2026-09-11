@@ -182,7 +182,18 @@ export interface NixieState {
 export interface LightCommand {
   state?: "ON" | "OFF";
   brightness?: number;
-  color?: { h: number; s: number };
+  color?: {
+    h?: number;
+    s?: number;
+    r?: number;
+    g?: number;
+    b?: number;
+    x?: number;
+    y?: number;
+  };
+  hs_color?: [number, number];
+  rgb_color?: [number, number, number];
+  color_temp?: number;
   effect?: string;
 }
 
