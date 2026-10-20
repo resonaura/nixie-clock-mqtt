@@ -15,24 +15,16 @@ import {
   syncTime,
   getFirmwareVersion,
 } from "./nixie.js";
+import { resolveLightCommand, rememberLightCommand } from "./light-command.js";
 import { startTimeSync } from "./timesync.js";
 import {
   LightCommand,
   MQTTDevice,
   NixieConfig,
-  COLOR_MODE_IDS,
   COLOR_MODE_NAMES,
   tzByLabel,
 } from "./types.js";
-import {
-  log,
-  tubeHSV,
-  haBrightToV,
-  vToHaBright,
-  configLightToV,
-  tzLabel,
-  rgbToHsv,
-} from "./utils.js";
+import { log, tubeHSV, vToHaBright, configLightToV, tzLabel } from "./utils.js";
 
 // ── MQTT device descriptor ────────────────────────────────────────────────────
 
@@ -202,8 +194,10 @@ function publishState(cfg: NixieConfig): void {
 // ── Polling ───────────────────────────────────────────────────────────────────
 
 async function poll(): Promise<void> {
+  if (pendingLightCommands) return;
   try {
     const cfg = await getConfig();
+    if (pendingLightCommands) return;
 
     publish(AVAILABILITY_TOPIC, "online", true);
 
@@ -234,123 +228,37 @@ async function poll(): Promise<void> {
 
 // ── Command handlers ──────────────────────────────────────────────────────────
 
-async function handleLightTube(
-  tube: number | "all",
-  payload: string,
-): Promise<void> {
+let lightCommands: Promise<unknown> = Promise.resolve();
+let pendingLightCommands = 0;
+
+function handleLightTube(tube: number | "all", payload: string): Promise<void> {
   const msg = JSON.parse(payload) as LightCommand;
-  const cfg = lastConfig;
-
-  // Effect command on all_tubes → color mode change
-  if (tube === "all" && msg.effect !== undefined) {
-    const m = COLOR_MODE_IDS[msg.effect];
-    if (m === undefined) {
-      log.warn(`Unknown effect/color mode: ${msg.effect}`);
-      return;
-    }
-    await setColorMode(m, cfg?.outcarry ?? 1);
-    if (cfg) cfg.mode = m;
-
-    const hasExplicitColorOrBrightness =
-      msg.color !== undefined ||
-      msg.brightness !== undefined ||
-      msg.hs_color !== undefined ||
-      msg.rgb_color !== undefined;
-
-    // Only return early if this was solely an effect selection without color or brightness
-    if (!hasExplicitColorOrBrightness) {
-      const { h, s } = cfg ? tubeHSV(cfg, 1) : { h: 0, s: 100 };
-      publishLightOptimistic("all", h, s, lastNonZeroV, msg.effect);
-      return;
-    }
-  }
-
-  // Base HSV from current state
-  let h = 0,
-    s = 100,
-    v = lastNonZeroV;
-  if (cfg) {
-    const base = tubeHSV(cfg, tube === "all" ? 1 : tube);
-    h = base.h;
-    s = base.s;
-    // Use lastNonZeroV when device reports 0 (tubes are off)
-    v = base.v > 0 ? base.v : lastNonZeroV;
-  }
-
-  if (msg.state === "OFF") {
-    // Optimistically turn off in HA immediately
-    publishLightOptimistic(tube, h, s, 0);
-    if (tube === "all") {
-      await setAllTubesColor(h, s, 0);
-    } else {
-      await setTubeColor(tube as number, h, s, 0);
-    }
-    return;
-  }
-
-  let colorSpecified = false;
-
-  // 1. Color extraction supporting all Home Assistant color formats
-  if (msg.color) {
-    if (typeof msg.color.h === "number" && typeof msg.color.s === "number") {
-      h = Math.round(msg.color.h);
-      s = Math.round(msg.color.s);
-      colorSpecified = true;
-    } else if (
-      typeof msg.color.r === "number" &&
-      typeof msg.color.g === "number" &&
-      typeof msg.color.b === "number"
-    ) {
-      const hsv = rgbToHsv(msg.color.r, msg.color.g, msg.color.b);
-      h = hsv.h;
-      s = hsv.s;
-      colorSpecified = true;
-    }
-  } else if (Array.isArray(msg.hs_color) && msg.hs_color.length >= 2) {
-    h = Math.round(msg.hs_color[0]);
-    s = Math.round(msg.hs_color[1]);
-    colorSpecified = true;
-  } else if (Array.isArray(msg.rgb_color) && msg.rgb_color.length >= 3) {
-    const hsv = rgbToHsv(msg.rgb_color[0], msg.rgb_color[1], msg.rgb_color[2]);
-    h = hsv.h;
-    s = hsv.s;
-    colorSpecified = true;
-  }
-
-  // 2. Brightness extraction with safeguards
-  if (msg.brightness !== undefined) {
-    v = haBrightToV(msg.brightness);
-    if (v > 0) lastNonZeroV = v;
-  } else if (msg.state === "ON" && v === 0) {
-    // When scene/automation sends ON without explicit brightness, restore last known brightness
-    v = lastNonZeroV > 0 ? lastNonZeroV : 100;
-  }
-
-  // 3. Mode safeguard: If an explicit color is set and the clock was in an animation
-  // effect mode (Rainbow=2, Breathing=3, Flowing=4, Test=5), switch to Custom (mode=1)
-  // so the hardware displays the static color instead of continuing the animation.
-  if (colorSpecified && cfg && cfg.mode !== 1) {
-    log.info(`Switching mode from ${COLOR_MODE_NAMES[cfg.mode] ?? cfg.mode} to Custom (1) for static color`);
-    await setColorMode(1, cfg.outcarry ?? 1);
-    cfg.mode = 1;
-  }
-
-  // Optimistically publish new color/brightness to HA before device responds
-  const effectName =
-    msg.effect ?? (cfg ? (COLOR_MODE_NAMES[cfg.mode] ?? "Custom") : undefined);
-  publishLightOptimistic(
-    tube,
-    h,
-    s,
-    v,
-    tube === "all" ? effectName : undefined,
-  );
-
-  if (tube === "all") {
-    await setAllTubesColor(h, s, v);
-  } else {
-    await setTubeColor(tube as number, h, s, v);
-  }
+  pendingLightCommands++;
+  const operation = lightCommands
+    .then(async () => {
+      const command = resolveLightCommand(msg, lastConfig, tube, lastNonZeroV);
+      if (command.mode !== undefined)
+        await setColorMode(command.mode, lastConfig?.outcarry ?? 1);
+      publishLightOptimistic(
+        tube,
+        command.h,
+        command.s,
+        command.v,
+        tube === "all" ? command.effect : undefined,
+      );
+      if (command.writeColor) {
+        if (tube === "all")
+          await setAllTubesColor(command.h, command.s, command.v);
+        else await setTubeColor(tube, command.h, command.s, command.v);
+      }
+      rememberLightCommand(lastConfig, tube, command);
+      if (command.v > 0) lastNonZeroV = command.v;
+    })
+    .finally(() => {
+      pendingLightCommands--;
+    });
+  lightCommands = operation.catch(() => {});
+  return operation;
 }
 
 async function handleTimezone(payload: string): Promise<void> {

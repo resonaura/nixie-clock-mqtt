@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.3.10 — Consistent scene commands
+
+- Resolve scene colour, brightness, power and effect as one command; explicit animated effects are preserved when a saved scene also includes colour.
+- Honour ON/OFF alongside effect-only commands, restore the latest applied scene values and select Custom even before the first config poll.
+- Serialize complete light commands and suppress intermediate config polls. Add isolated command regression tests without contacting the clock.
+
 ## v1.3.9 — Fix Scene Effect Fallthrough & Hardware Request Serialization
 
 ### 🐛 Bug Fixes
